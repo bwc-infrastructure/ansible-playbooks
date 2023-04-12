@@ -1,0 +1,74 @@
+---
+- name: Establish some role-related facts
+  set_fact:
+    mongodb_major_version: "{{ specific_mongodb_version[0:3] | string }}"
+
+- name: Add Monogodb APT key
+  apt_key:
+    url: https://www.mongodb.org/static/pgp/server-{{mongodb_major_version}}.asc 
+    state: present
+  become: true
+
+- name: Add Mongob APT repository
+  become: true
+  apt_repository:
+    repo: deb https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/{{mongodb_major_version}} multiverse
+    update_cache: true
+    state: present
+  when: 
+   - ansible_distribution == "Ubuntu" and ansible_distribution_release == "jammy"
+
+- name: install Mongodb
+  become: true
+  apt:
+    state: latest
+    name:
+      - mongodb-org
+  register: mongodb_install
+  when: 
+  - ansible_distribution == "Ubuntu" 
+
+- name: Mongodb folders
+  become: true
+  file:
+    path: "{{ item.name }}"
+    state: directory
+    group: mongodb
+    owner: mongodb
+    setype: "{{ item.setype }}"
+  loop:
+    - name: "{{ root_folder }}/data/mongo"
+    #SELinux context on the new dbpath
+      setype: "mongod_var_lib_t"
+  register: mongodb_folder_structure
+
+- name: Mongodb config
+  become: true
+  template:
+    src: templates/mongo-config.cfg
+    dest: /etc/mongod.conf
+  when:
+  - server_role == "config"
+  register: service_conf
+
+- name: enable Mongodb to start on boot
+  become: true
+  systemd:
+    daemon_reload: true
+    name: mongod
+    enabled: yes
+    masked: no
+
+- name: Ensure mongodb is started
+  become: true
+  systemd:
+    name: mongod
+    state: started
+    
+- name: Restart mongodb on config change
+  become: true
+  systemd:
+    name: mongod
+    state: restarted
+  when: service_conf.changed
+

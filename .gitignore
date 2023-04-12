@@ -1,0 +1,5 @@
+# macOS
+.DS_Store
+# IDE workspace settings
+.vscode/
+.idea/
